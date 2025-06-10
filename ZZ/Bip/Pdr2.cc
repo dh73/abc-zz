@@ -231,6 +231,10 @@ class Pdr2 {
     bool   blockCube (TCube s);
     bool   propagate ();
 
+    // -- Extract a subset of the predecessor cube 'b' that blocks all
+    //    successors of state cube 's'. Used by rlive to build the nested DFS.
+    Cube   approxPre(const Cube& s, const Cube& b);
+
     void   extractCex(ProofObl pobl);
     uint   invariantSize();
     void   storeInvariant(NetlistRef N_invar);
@@ -1065,6 +1069,41 @@ bool Pdr2::isBlocked(TCube s)
     lbool result = S[k].solve(assumps); assert(result != l_Undef);
     //**/WriteLn "isBlocked(%_) = %_", s, (result == l_False);
     return result == l_False;
+}
+
+
+// Create an over-approximation of the image T(s) by querying the SAT solver
+// on the formula 's \land T' under assumptions 'b'' (prime). If unsat, a subset
+// of 'b' is returned and added to frame 0 as a blocking cube. This is used by
+// the rlive algorithm to build the nested depth-first search without explicitly
+// enumerating successors.
+Cube Pdr2::approxPre(const Cube& s, const Cube& b)
+{
+    Vec<Lit> assumps;
+
+    // Current state literals.
+    for (uint i = 0; i < s.size(); i++)
+        assumps.push(clausify(0, s[i]));
+
+    // Assumptions on successor literals.
+    for (uint i = 0; i < b.size(); i++)
+        assumps.push(clausify(0, b[i], 1));
+
+    lbool result = S[0].solve(assumps);
+    if (result == l_False){
+        Vec<Lit> confl;
+        S[0].getConflict(confl);
+        Cube core;
+        for (uint i = 0; i < b.size(); i++)
+            if (has(confl, clausify(0, b[i], 1)))
+                core.push(b[i]);
+
+        if (core.size() != 0)
+            addCube(TCube(core, 0));
+        return core;
+    }
+
+    return Cube_NULL;
 }
 
 
