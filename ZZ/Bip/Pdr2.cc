@@ -247,6 +247,9 @@ public:
         N(N_), P(P_), cex(cex_), N_invar(N_invar_), n2z(1), activity(0), seed(DEFAULT_SEED) {}
 
     bool run();
+
+    // -- Public wrapper for approxPre used by rlive and external utilities.
+    Cube approxPreQuery(const Cube& s, const Cube& b) { return approxPre(s, b); }
 };
 
 
@@ -1093,12 +1096,13 @@ Cube Pdr2::approxPre(const Cube& s, const Cube& b)
     if (result == l_False){
         Vec<Lit> confl;
         S[0].getConflict(confl);
-        Cube core;
+        Vec<GLit> core_vec;
         for (uint i = 0; i < b.size(); i++)
             if (has(confl, clausify(0, b[i], 1)))
-                core.push(b[i]);
+                core_vec.push(b[i]);
 
-        if (core.size() != 0)
+        Cube core = (core_vec.size() != 0) ? Cube(core_vec) : Cube_NULL;
+        if (core)
             addCube(TCube(core, 0));
         return core;
     }
@@ -1683,6 +1687,17 @@ bool pdr2( NetlistRef          N,
     if (!ret && cex)
         translateCex(ccex, N, *cex);
     return ret;
+}
+
+//-------------------------------------------------------------------------
+// Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
+Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Cube& s, const Cube& b)
+{
+    CCex    dummy_cex;
+    Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
+    engine.run();
+    return engine.approxPreQuery(s, b);
 }
 
 
