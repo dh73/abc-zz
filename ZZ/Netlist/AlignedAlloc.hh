@@ -50,7 +50,7 @@ public:
     char* allocBig(size_t n_bytes);
         // -- Return pointer to newly allocated (and aligned) 'n_bytes' sized memory area. NOTE!
         // A lot less memory efficient than 'alloc()'; intended to be used for large blocks.
-    void  moveTo(AlignedAlloc<small_block_, big_block_>& dst);
+    void  moveTo(AlignedAlloc<small_block_, big_block_, skew>& dst);
 
     AlignedAlloc() : curr(NULL), end(NULL) {}
    ~AlignedAlloc() { clear(); }
@@ -111,7 +111,7 @@ inline void AlignedAlloc<sb,bb,skew>::clear()
 
 
 template<size_t sb, size_t bb, size_t skew>
-inline void AlignedAlloc<sb,bb,skew>::moveTo(AlignedAlloc<sb, bb>& dst)
+inline void AlignedAlloc<sb,bb,skew>::moveTo(AlignedAlloc<sb, bb, skew>& dst)
 {
     dst.clear();
     blocks.moveTo(dst.blocks);
