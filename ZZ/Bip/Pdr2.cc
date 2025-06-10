@@ -231,6 +231,10 @@ class Pdr2 {
     bool   blockCube (TCube s);
     bool   propagate ();
 
+    // -- Extract a subset of the predecessor cube 'b' that blocks all
+    //    successors of state cube 's'. Used by rlive to build the nested DFS.
+    Cube   approxPre(const Cube& s, const Cube& b);
+
     void   extractCex(ProofObl pobl);
     uint   invariantSize();
     void   storeInvariant(NetlistRef N_invar);
@@ -243,6 +247,9 @@ public:
         N(N_), P(P_), cex(cex_), N_invar(N_invar_), n2z(1), activity(0), seed(DEFAULT_SEED) {}
 
     bool run();
+
+    // -- Public wrapper for approxPre used by rlive and external utilities.
+    Cube approxPreQuery(const Cube& s, const Cube& b) { return approxPre(s, b); }
 };
 
 
@@ -1068,6 +1075,42 @@ bool Pdr2::isBlocked(TCube s)
 }
 
 
+// Create an over-approximation of the image T(s) by querying the SAT solver
+// on the formula 's \land T' under assumptions 'b'' (prime). If unsat, a subset
+// of 'b' is returned and added to frame 0 as a blocking cube. This is used by
+// the rlive algorithm to build the nested depth-first search without explicitly
+// enumerating successors.
+Cube Pdr2::approxPre(const Cube& s, const Cube& b)
+{
+    Vec<Lit> assumps;
+
+    // Current state literals.
+    for (uint i = 0; i < s.size(); i++)
+        assumps.push(clausify(0, s[i]));
+
+    // Assumptions on successor literals.
+    for (uint i = 0; i < b.size(); i++)
+        assumps.push(clausify(0, b[i], 1));
+
+    lbool result = S[0].solve(assumps);
+    if (result == l_False){
+        Vec<Lit> confl;
+        S[0].getConflict(confl);
+        Vec<GLit> core_vec;
+        for (uint i = 0; i < b.size(); i++)
+            if (has(confl, clausify(0, b[i], 1)))
+                core_vec.push(b[i]);
+
+        Cube core = (core_vec.size() != 0) ? Cube(core_vec) : Cube_NULL;
+        if (core)
+            addCube(TCube(core, 0));
+        return core;
+    }
+
+    return Cube_NULL;
+}
+
+
 // Check if 'c' is a cube consistent with the initial states. The cube 'c' may contain 'glit_NULL's
 // (which are ignored)
 template<class GVec>
@@ -1644,6 +1687,17 @@ bool pdr2( NetlistRef          N,
     if (!ret && cex)
         translateCex(ccex, N, *cex);
     return ret;
+}
+
+//-------------------------------------------------------------------------
+// Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
+Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Cube& s, const Cube& b)
+{
+    CCex    dummy_cex;
+    Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
+    engine.run();
+    return engine.approxPreQuery(s, b);
 }
 
 

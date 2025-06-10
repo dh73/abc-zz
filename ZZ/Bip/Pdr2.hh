@@ -72,6 +72,11 @@ void setParams(const CLI& cli, Params_Pdr2& P);
 
 bool pdr2(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P, Cex* cex, NetlistRef N_invar);
 
+// Convenience wrapper that initializes a Pdr2 engine and queries the over-approximate
+// predecessor core for cube 'b' relative to state cube 's'.
+Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Cube& s, const Cube& b);
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 }
