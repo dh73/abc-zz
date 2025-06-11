@@ -45,6 +45,33 @@ ZZ_PTimer_Add(pdr2_propagate);
 /*tmp*/ZZ_PTimer_Add(aug_bfs);
 /*tmp*/ZZ_PTimer_Add(aug_update);
 
+// Small local helper to pretty-print cubes for debugging.
+struct FmtCube {
+    NetlistRef N;
+    Cube       c;
+    FmtCube(NetlistRef N_, Cube c_) : N(N_), c(c_) {}
+};
+
+template<> fts_macro void write_(Out& out, const FmtCube& f)
+{
+    if (!f.c)
+        FWrite(out) "<<null>>";
+    else{
+        out += '<';
+        for (uind i = 0; i < f.c.size(); i++){
+            Wire w = f.N[f.c[i]];
+            if (i > 0) out += ' ';
+            if (type(w) == gate_Flop)
+                FWrite(out) "%Cs%_", sign(w)?'~':0, attr_Flop(w).number;
+            else if (type(w) == gate_PI)
+                FWrite(out) "%Ci%_", sign(w)?'~':0, attr_PI(w).number;
+            else
+                FWrite(out) "%s", w;
+        }
+        out += '>';
+    }
+}
+
 
 // Avoid linker conflicts:
 #define TCube         Pdr2_TCube
@@ -1887,14 +1914,19 @@ static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2
     if (depth > P.rlive_limit)
         return false;
 
+    WriteLn "[rlive] depth %_  state %_", depth, FmtCube(N, s);
+
     for (uint i = 0; i < stack.size(); i++)
-        if (stack[i] == s)
+        if (stack[i] == s){
+            WriteLn "[rlive] cycle detected at depth %_", depth;
             return true;
+        }
 
     stack.push(s);
 
     Cube dead = pruneDeadRlive(N, props, P, s);
     if (dead){
+        WriteLn "[rlive] dead state -> %_", FmtCube(N, dead);
         C.push(dead);
         stack.pop();
         return false;
@@ -1903,10 +1935,15 @@ static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2
     Cube succ;
     approxPreRlive(N, props, P, s, Cube_NULL, &succ);
     bool res = false;
-    if (succ)
+    if (succ){
+        WriteLn "[rlive] successor %_", FmtCube(N, succ);
         res = searchCexRec(N, props, P, succ, C, stack, depth + 1);
-    if (!res)
+    }else
+        WriteLn "[rlive] no successor";
+    if (!res){
+        WriteLn "[rlive] shoal added: %_", FmtCube(N, s);
         C.push(s);
+    }
     stack.pop();
     return res;
 }
@@ -1915,16 +1952,23 @@ static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2
 bool rlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P)
 {
     Vec<Cube> C;       // discovered shoals
+    uint iter = 0;
 
-    for (;;){
+    for (;;iter++){
+        WriteLn "[rlive] iteration %_  shoals: %_", iter, C.size();
         Cex cex;
-        if (pdr2Constrained(N, props, P, C, &cex, Netlist_NULL))
+        if (pdr2Constrained(N, props, P, C, &cex, Netlist_NULL)){
+            WriteLn "[rlive] property proved after %_ iterations", iter;
             return true;      // property proved
+        }
 
         Cube s = cexLastState(N, cex);
+        WriteLn "[rlive] restarting DFS from %_", FmtCube(N, s);
         Vec<Cube> stack;
-        if (searchCexRec(N, props, P, s, C, stack, 0))
+        if (searchCexRec(N, props, P, s, C, stack, 0)){
+            WriteLn "[rlive] counterexample found";
             return false;     // counterexample found
+        }
         // continue loop with enlarged C
     }
 }

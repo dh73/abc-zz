@@ -91,6 +91,8 @@ Checking" (Xia *et al.*, CAV 2024).  The following components are available:
   initial state.
 * **Experimental search utilities**: `dfsExploreRlive` and the `rlive` engine
   perform a bounded depth‑first search using these helpers.
+* **Verbose tracing**: the DFS now reports its depth, detected cycles, and the
+  shoal cubes added during exploration, aiding in debugging.
 
 The implementation now follows Algorithm 2.  Shoals discovered during the DFS
 are fed back to the underlying IC3 engine through additional blocking clauses
