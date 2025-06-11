@@ -73,3 +73,27 @@ Build
 
     cmake --build .
 
+## Rlive Implementation Progress
+
+This repository currently contains a partial implementation of the **rlive**
+algorithm described in "Avoiding the Shoals – A New Approach to Liveness
+Checking" (Xia *et al.*, CAV 2024).  The following components are available:
+
+* **SAT query helpers**: the `Pdr2` engine now exposes `approxPre` and
+  `pruneDead` which over‑approximate successor states and detect dead states by
+  querying the solver with primed assumptions.  These are used to build the
+  nested DFS required by rlive.
+* **Command‑line support**: a new liveness engine `rlive` can be selected from
+  the main `bip` executable.  The recursion depth is controlled with the
+  `-rlive-depth` option.
+* **Examples and tests**: `Main_pdr2_pre_test.cc` demonstrates calling the new
+  helpers on an 8‑bit counter and runs a small bounded DFS starting from the
+  initial state.
+* **Experimental search utilities**: `dfsExploreRlive` and the `rlive` engine
+  perform a bounded depth‑first search using these helpers.
+
+The implementation now follows Algorithm 2.  Shoals discovered during the DFS
+are fed back to the underlying IC3 engine through additional blocking clauses
+so that exploration continues until either an inductive invariant is found or a
+lasso‑shaped counterexample is produced.
+

@@ -1004,7 +1004,7 @@ int main(int argc, char** argv)
     cli_live.add("aig", "string", "", "Output AIGER file after conversion.");
     cli_live.add("gig", "string", "", "Output GIG file after conversion.");
     cli_live.add("wit", "string", "", "Output AIGER 1.9 witness.");
-    cli_live.add("eng", "{none, bmc, treb, treb-abs, pdr2, imc}", "treb", "Proof-engine to apply to conversion.");
+    cli_live.add("eng", "{none, bmc, treb, treb-abs, pdr2, rlive, imc}", "treb", "Proof-engine to apply to conversion.");
     cli_live.add("bmc-depth", "uint | {inf}", "inf", "For '-eng=bmc' only; bound the depth.");
     cli.addCommand("live", "Liveness checking.", &cli_live);
 
@@ -1012,7 +1012,7 @@ int main(int argc, char** argv)
     CLI cli_ltl;
     cli_ltl.add("spec", "string", "", "File containing LTL specification(s).");
     cli_ltl.add("inv", "bool", "no", "Negate LTL formula.");
-    cli_ltl.add("eng", "{klive, bmc, pdr, auto}", "auto", "Which liveness engine to use. 'auto == pdr' unless '-final-gig' is given.");
+    cli_ltl.add("eng", "{klive, bmc, pdr, rlive, auto}", "auto", "Which liveness engine to use. 'auto == pdr' unless '-final-gig' is given.");
     cli_ltl.add("names", "bool | {auto}", "auto", "Migrate names through transformation for debugging.");
     cli_ltl.add("spec-gig", "string", "", "Save internal representation of spec.");
     cli_ltl.add("mon-gig", "string", "", "Save synthesized monitor.");
@@ -1801,6 +1801,7 @@ int main(int argc, char** argv)
         P.eng = (eng == "klive") ? Params_LtlCheck::eng_KLive  :
                 (eng == "bmc")   ? Params_LtlCheck::eng_L2sBmc :
                 (eng == "pdr")   ? Params_LtlCheck::eng_L2sPdr :
+                (eng == "rlive") ? Params_LtlCheck::eng_Rlive  :
                 !some_output     ? Params_LtlCheck::eng_L2sPdr :
                 /*otherwise*/      Params_LtlCheck::eng_NULL;
 

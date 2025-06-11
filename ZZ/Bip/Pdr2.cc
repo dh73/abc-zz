@@ -231,6 +231,14 @@ class Pdr2 {
     bool   blockCube (TCube s);
     bool   propagate ();
 
+    // -- Extract a subset of the predecessor cube 'b' that blocks all
+    //    successors of state cube 's'. Used by rlive to build the nested DFS.
+    Cube   approxPre(const Cube& s, const Cube& b, Cube* succ = NULL);
+
+    // -- Detect whether a state cube has any successor. If none exists, the
+    //    returned cube blocks the dead state in frame 0.
+    Cube   pruneDead(const Cube& s);
+
     void   extractCex(ProofObl pobl);
     uint   invariantSize();
     void   storeInvariant(NetlistRef N_invar);
@@ -242,7 +250,17 @@ public:
     Pdr2(NetlistRef N_, const Params_Pdr2& P_, CCex& cex_, NetlistRef N_invar_) :
         N(N_), P(P_), cex(cex_), N_invar(N_invar_), n2z(1), activity(0), seed(DEFAULT_SEED) {}
 
-    bool run();
+    bool run(const Vec<Cube>* init_blocks = NULL);
+
+    // -- Public wrapper for approxPre used by rlive and external utilities.
+    Cube approxPreQuery(const Cube& s, const Cube& b, Cube* succ = NULL) { return approxPre(s, b, succ); }
+    Cube pruneDeadQuery(const Cube& s) { return pruneDead(s); }
+
+    // -- Experimental: perform a bounded DFS following successors returned by
+    //    'approxPre'. This explores at most 'P.rlive_limit' steps and stops if
+    //    a previously visited cube is reached again (cycle detection). Returns
+    //    TRUE if a cycle was found.
+    bool dfsExplore(const Cube& s, Vec<Cube>& stack, uint depth = 0);
 };
 
 
@@ -1068,6 +1086,84 @@ bool Pdr2::isBlocked(TCube s)
 }
 
 
+// Create an over-approximation of the image T(s) by querying the SAT solver
+// on the formula 's \land T' under assumptions 'b'' (prime). If unsat, a subset
+// of 'b' is returned and added to frame 0 as a blocking cube. This is used by
+// the rlive algorithm to build the nested depth-first search without explicitly
+// enumerating successors.
+Cube Pdr2::approxPre(const Cube& s, const Cube& b, Cube* succ)
+{
+    Vec<Lit> assumps;
+
+    // Current state literals.
+    for (uint i = 0; i < s.size(); i++)
+        assumps.push(clausify(0, s[i]));
+
+    // Assumptions on successor literals.
+    for (uint i = 0; i < b.size(); i++)
+        assumps.push(clausify(0, b[i], 1));
+
+    lbool result = S[0].solve(assumps);
+    if (result == l_False){
+        Vec<Lit> confl;
+        S[0].getConflict(confl);
+        Vec<GLit> core_vec;
+        for (uint i = 0; i < b.size(); i++)
+            if (has(confl, clausify(0, b[i], 1)))
+                core_vec.push(b[i]);
+
+        Cube core = (core_vec.size() != 0) ? Cube(core_vec) : Cube_NULL;
+        if (core)
+            addCube(TCube(core, 0));
+        return core;
+    }
+
+    if (succ != NULL){
+        storeModel(0);
+        Vec<GLit> next;
+        For_Gatetype(N, gate_Flop, w){
+            int num = attr_Flop(w).number;
+            if (num != num_NULL){
+                lbool val = lvalue(w, 1);
+                if (val != l_Undef)
+                    next.push(val == l_True ? w : ~w);
+            }
+        }
+        *succ = Cube(next);
+    }
+
+    return Cube_NULL;
+}
+
+
+// Check if the state cube 's' has any successor by solving 's \land T'. If the
+// query is unsatisfiable, an unsat core subset of 's' is returned and stored in
+// frame 0 as a blocking cube.
+Cube Pdr2::pruneDead(const Cube& s)
+{
+    Vec<Lit> assumps;
+    for (uint i = 0; i < s.size(); i++)
+        assumps.push(clausify(0, s[i]));
+
+    lbool result = S[0].solve(assumps);
+    if (result == l_False){
+        Vec<Lit> confl;
+        S[0].getConflict(confl);
+        Vec<GLit> core_vec;
+        for (uint i = 0; i < s.size(); i++)
+            if (has(confl, clausify(0, s[i])))
+                core_vec.push(s[i]);
+
+        Cube core = (core_vec.size() != 0) ? Cube(core_vec) : Cube_NULL;
+        if (core)
+            addCube(TCube(core, 0));
+        return core;
+    }
+
+    return Cube_NULL;
+}
+
+
 // Check if 'c' is a cube consistent with the initial states. The cube 'c' may contain 'glit_NULL's
 // (which are ignored)
 template<class GVec>
@@ -1305,7 +1401,7 @@ bool Pdr2::blockCube(TCube s0)
 }
 
 
-bool Pdr2::run()
+bool Pdr2::run(const Vec<Cube>* init_blocks)
 {
     // Add a flop on top of the property:
     Get_Pob(N, properties);
@@ -1343,6 +1439,11 @@ bool Pdr2::run()
     For_Gatetype(N, gate_Flop, w)
         if (flop_init[w] != l_Undef)
             addCube(TCube(Cube(w ^ (flop_init[w] == l_True)), 0));
+
+    if (init_blocks)
+        for (uint i = 0; i < init_blocks->size(); i++)
+            if ((*init_blocks)[i])
+                addCube(TCube((*init_blocks)[i], 0));
 
     //*T*/N.write("L.gig"); WriteLn "Wrote: L.gig";
     //*T*/Dump(w_prop);
@@ -1408,6 +1509,7 @@ bool Pdr2::run()
         }
     }
 }
+
 
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -1646,6 +1748,189 @@ bool pdr2( NetlistRef          N,
     return ret;
 }
 
+// Same as 'pdr2' but adds the cubes in 'blocks' as blocking clauses in frame 0.
+bool pdr2Constrained(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                     const Vec<Cube>& blocks, Cex* cex, NetlistRef N_invar)
+{
+    WWMap n2l;
+    Netlist L;
+
+    // Preprocess netlist (same as in 'pdr2'):
+    {
+        Netlist M;
+        WMap<Wire> n2m;
+        initBmcNetlist(N, props, M, /*keep_flop_init*/true, n2m);
+
+        WWMap m2l;
+        Params_CnfMap PC; PC.quiet = true;
+        cnfMap(M, PC, L, m2l);
+
+        For_Gates(N, w)
+            n2l(w) = m2l[n2m[w]];
+
+        Get_Pob(N, flop_init);
+        Add_Pob2(L, flop_init, new_flop_init);
+        For_Gatetype(N, gate_Flop, w)
+            if (n2l[w])
+                new_flop_init(n2l[w] + L) = flop_init[w];
+
+        Get_Pob(M, properties);
+        Add_Pob2(L, properties, new_properties);
+        for (uint i = 0; i < properties.size(); i++)
+            new_properties.push(m2l[properties[i]] + L);
+
+        splitFlops(L);
+    }
+
+    // Translate blocking cubes:
+    Vec<Cube> blks_L;
+    for (uint i = 0; i < blocks.size(); i++){
+        if (!blocks[i]) continue;
+        Vec<GLit> lits;
+        for (uint j = 0; j < blocks[i].size(); j++){
+            Wire w = blocks[i][j] + N;
+            if (n2l[w])
+                lits.push(n2l[w] ^ sign(blocks[i][j]));
+        }
+        if (lits.size() > 0)
+            blks_L.push(Cube(lits));
+    }
+
+    CCex ccex;
+    Pdr2 pdr2(L, P, ccex, N_invar);
+    bool ret = pdr2.run(&blks_L);
+    if (!ret && cex)
+        translateCex(ccex, N, *cex);
+    return ret;
+}
+
+//-------------------------------------------------------------------------
+// Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
+Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Cube& s, const Cube& b, Cube* succ)
+{
+    CCex    dummy_cex;
+    Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
+    engine.run();
+    return engine.approxPreQuery(s, b, succ);
+}
+
+// Convenience wrapper to check if a state cube is dead in the given netlist.
+Cube pruneDeadRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Cube& s)
+{
+    CCex    dummy_cex;
+    Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
+    engine.run();
+    return engine.pruneDeadQuery(s);
+}
+
+// Convenience wrapper running a temporary Pdr2 engine and invoking the
+// experimental DFS search.
+bool dfsExploreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                     const Cube& s)
+{
+    CCex dummy_cex;
+    Pdr2 engine(N, P, dummy_cex, Netlist_NULL);
+    engine.run();
+    Vec<Cube> stack;
+    return engine.dfsExplore(s, stack, 0);
+}
+
+//-------------------------------------------------------------------------
+// Experimental bounded DFS exploration used by early rlive testing.
+bool Pdr2::dfsExplore(const Cube& s, Vec<Cube>& stack, uint depth)
+{
+    if (depth >= P.rlive_limit)
+        return false;
+
+    for (uint i = 0; i < stack.size(); i++)
+        if (stack[i] == s)
+            return true;    // cycle found
+
+    stack.push(s);
+
+    if (pruneDead(s)){
+        stack.pop();
+        return false;
+    }
+
+    Cube succ;
+    approxPre(s, Cube_NULL, &succ);
+    bool res = false;
+    if (succ)
+        res = dfsExplore(succ, stack, depth + 1);
+
+    stack.pop();
+    return res;
+}
+
+// Extract the cube representing the last state in the counterexample.
+static Cube cexLastState(NetlistRef N, const Cex& cex)
+{
+    XSimulate sim(N);
+    sim.simulate(cex);
+    const WMap<lbool>& st = sim[sim.sim.size() - 1];
+    Vec<GLit> lits;
+    For_Gatetype(N, gate_Flop, w){
+        int num = attr_Flop(w).number;
+        if (num != num_NULL && st[w] != l_Undef)
+            lits.push(st[w] == l_True ? w : ~w);
+    }
+    return Cube(lits);
+}
+
+// Recursive search as in Algorithm 2.
+static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                         const Cube& s, Vec<Cube>& C, Vec<Cube>& stack, uint depth)
+{
+    if (depth > P.rlive_limit)
+        return false;
+
+    for (uint i = 0; i < stack.size(); i++)
+        if (stack[i] == s)
+            return true;
+
+    stack.push(s);
+
+    Cube dead = pruneDeadRlive(N, props, P, s);
+    if (dead){
+        C.push(dead);
+        stack.pop();
+        return false;
+    }
+
+    Cube succ;
+    approxPreRlive(N, props, P, s, Cube_NULL, &succ);
+    bool res = false;
+    if (succ)
+        res = searchCexRec(N, props, P, succ, C, stack, depth + 1);
+    if (!res)
+        C.push(s);
+    stack.pop();
+    return res;
+}
+
+// Full rlive loop using pdr2 as the reachability engine.
+bool rlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P)
+{
+    Vec<Cube> C;       // discovered shoals
+
+    for (;;){
+        Cex cex;
+        if (pdr2Constrained(N, props, P, C, &cex, Netlist_NULL))
+            return true;      // property proved
+
+        Cube s = cexLastState(N, cex);
+        Vec<Cube> stack;
+        if (searchCexRec(N, props, P, s, C, stack, 0))
+            return false;     // counterexample found
+        // continue loop with enlarged C
+    }
+}
+
+// TODO: use 'P.rlive_limit' when implementing the full rlive search.
+
 
 //mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 // Parameters:
@@ -1691,6 +1976,7 @@ void addCli_Pdr2(CLI& cli)
     cli.add("tweak"    , "bool"          , B(P.tweak_cut)    , "Do a (weak) post-processing of min-cut to select more active variables.");
     cli.add("sat"      , sat_types       , sat_default       , "SAT-solver to use.");
     cli.add("prop-init", "bool"          , B(P.prop_init)    , "Propagate initial state unit cubes from F[0].");
+    cli.add("rlive-depth", "uint", "3", "Max recursion depth for rlive nested DFS.");
 }
 
 
@@ -1712,6 +1998,7 @@ void setParams(const CLI& cli, Params_Pdr2& P)
     P.gen_orbits     = cli.get("orbits").int_val;
     P.tweak_cut      = cli.get("tweak").bool_val;
     P.prop_init      = cli.get("prop-init").bool_val;
+    P.rlive_limit    = (uint)cli.get("rlive-depth").int_val;
 
     P.sat_solver = (cli.get("sat").enum_val == 0) ? sat_Zz :
                    (cli.get("sat").enum_val == 1) ? sat_Msc :
