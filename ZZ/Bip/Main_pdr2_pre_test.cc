@@ -25,8 +25,11 @@ int main(int argc, char** argv)
 
     Cube s(x);
     Cube b(~x);
-    Cube core = approxPreRlive(N, props, P, s, b);
+    Cube succ;
+    Cube core = approxPreRlive(N, props, P, s, b, &succ);
 
     WriteLn "core size: %_", (uint) (core ? core.size() : 0);
+    if (succ)
+        WriteLn "succ size: %_", (uint) succ.size();
     return 0;
 }

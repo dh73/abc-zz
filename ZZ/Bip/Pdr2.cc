@@ -233,7 +233,7 @@ class Pdr2 {
 
     // -- Extract a subset of the predecessor cube 'b' that blocks all
     //    successors of state cube 's'. Used by rlive to build the nested DFS.
-    Cube   approxPre(const Cube& s, const Cube& b);
+    Cube   approxPre(const Cube& s, const Cube& b, Cube* succ = NULL);
 
     void   extractCex(ProofObl pobl);
     uint   invariantSize();
@@ -249,7 +249,7 @@ public:
     bool run();
 
     // -- Public wrapper for approxPre used by rlive and external utilities.
-    Cube approxPreQuery(const Cube& s, const Cube& b) { return approxPre(s, b); }
+    Cube approxPreQuery(const Cube& s, const Cube& b, Cube* succ = NULL) { return approxPre(s, b, succ); }
 };
 
 
@@ -1080,7 +1080,7 @@ bool Pdr2::isBlocked(TCube s)
 // of 'b' is returned and added to frame 0 as a blocking cube. This is used by
 // the rlive algorithm to build the nested depth-first search without explicitly
 // enumerating successors.
-Cube Pdr2::approxPre(const Cube& s, const Cube& b)
+Cube Pdr2::approxPre(const Cube& s, const Cube& b, Cube* succ)
 {
     Vec<Lit> assumps;
 
@@ -1105,6 +1105,20 @@ Cube Pdr2::approxPre(const Cube& s, const Cube& b)
         if (core)
             addCube(TCube(core, 0));
         return core;
+    }
+
+    if (succ != NULL){
+        storeModel(0);
+        Vec<GLit> next;
+        For_Gatetype(N, gate_Flop, w){
+            int num = attr_Flop(w).number;
+            if (num != num_NULL){
+                lbool val = lvalue(w, 1);
+                if (val != l_Undef)
+                    next.push(val == l_True ? w : ~w);
+            }
+        }
+        *succ = Cube(next);
     }
 
     return Cube_NULL;
@@ -1692,12 +1706,12 @@ bool pdr2( NetlistRef          N,
 //-------------------------------------------------------------------------
 // Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
 Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                    const Cube& s, const Cube& b)
+                    const Cube& s, const Cube& b, Cube* succ)
 {
     CCex    dummy_cex;
     Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
     engine.run();
-    return engine.approxPreQuery(s, b);
+    return engine.approxPreQuery(s, b, succ);
 }
 
 

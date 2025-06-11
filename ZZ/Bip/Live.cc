@@ -323,6 +323,11 @@ lbool liveness(NetlistRef N0, uint fair_prop_no, const Params_Liveness& P, Cex* 
         ret = lbool_lift(pdr2(N, props, P_pdr2, &cex, Netlist_NULL));     // <<== need to add bug-free-depth and invariant to Pdr2
         break;
 
+    case Params_Liveness::eng_Rlive:
+        /**/P_pdr2.prop_init = true;
+        ret = lbool_lift(pdr2(N, props, P_pdr2, &cex, Netlist_NULL));
+        break;
+
     case Params_Liveness::eng_Imc:
         imcStd(N, props, P_imc, &cex, Netlist_NULL, &bug_free_depth);
         break;
