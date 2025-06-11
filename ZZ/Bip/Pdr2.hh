@@ -79,18 +79,19 @@ bool pdr2Constrained(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
 // Convenience wrapper that initializes a Pdr2 engine and queries the over-approximate
 // predecessor core for cube 'b' relative to state cube 's'.
 Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Vec<Cube>& blocks,
                     const Cube& s, const Cube& b, Cube* succ = NULL);
 
 // Convenience wrapper that detects if state 's' is dead (has no successors)
 // using the SAT solver. If unsat, a subset of 's' is returned and stored in
 // frame 0 as a blocking cube.
 Cube pruneDeadRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                    const Cube& s);
+                    const Vec<Cube>& blocks, const Cube& s);
 
 // Bounded DFS exploration using 'approxPre' and 'pruneDead'. Returns TRUE if a
 // cycle reachable within 'P.rlive_limit' is detected starting from 's'.
 bool dfsExploreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                     const Cube& s);
+                     const Vec<Cube>& blocks, const Cube& s);
 
 // Full rlive implementation based on Algorithm 2. Returns TRUE if the property
 // holds, FALSE if a lasso-shaped counterexample is found.

@@ -1834,32 +1834,33 @@ bool pdr2Constrained(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
 //-------------------------------------------------------------------------
 // Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
 Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
+                    const Vec<Cube>& blocks,
                     const Cube& s, const Cube& b, Cube* succ)
 {
     CCex    dummy_cex;
     Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
-    engine.run();
+    engine.run(&blocks);
     return engine.approxPreQuery(s, b, succ);
 }
 
 // Convenience wrapper to check if a state cube is dead in the given netlist.
 Cube pruneDeadRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                    const Cube& s)
+                    const Vec<Cube>& blocks, const Cube& s)
 {
     CCex    dummy_cex;
     Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
-    engine.run();
+    engine.run(&blocks);
     return engine.pruneDeadQuery(s);
 }
 
 // Convenience wrapper running a temporary Pdr2 engine and invoking the
 // experimental DFS search.
 bool dfsExploreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                     const Cube& s)
+                     const Vec<Cube>& blocks, const Cube& s)
 {
     CCex dummy_cex;
     Pdr2 engine(N, P, dummy_cex, Netlist_NULL);
-    engine.run();
+    engine.run(&blocks);
     Vec<Cube> stack;
     return engine.dfsExplore(s, stack, 0);
 }
@@ -1924,7 +1925,7 @@ static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2
 
     stack.push(s);
 
-    Cube dead = pruneDeadRlive(N, props, P, s);
+    Cube dead = pruneDeadRlive(N, props, P, C, s);
     if (dead){
         WriteLn "[rlive] dead state -> %_", FmtCube(N, dead);
         C.push(dead);
@@ -1933,7 +1934,7 @@ static bool searchCexRec(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2
     }
 
     Cube succ;
-    approxPreRlive(N, props, P, s, Cube_NULL, &succ);
+    approxPreRlive(N, props, P, C, s, Cube_NULL, &succ);
     bool res = false;
     if (succ){
         WriteLn "[rlive] successor %_", FmtCube(N, succ);

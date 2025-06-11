@@ -42,7 +42,8 @@ int main(int argc, char** argv)
     // Ask for predecessor core of cube {cnt[0]'} wrt state s.
     Cube b(cnt[0]);
     Cube succ;
-    Cube core = approxPreRlive(N, props, P, s, b, &succ);
+    Vec<Cube> blocks;
+    Cube core = approxPreRlive(N, props, P, blocks, s, b, &succ);
 
     WriteLn "core size: %_", (uint) (core ? core.size() : 0);
     if (succ)
