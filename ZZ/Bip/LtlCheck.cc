@@ -469,6 +469,10 @@ lbool ltlCheck(NetlistRef N, Wire spec, const Params_LtlCheck& P)
         PL.k = Params_Liveness::L2S;
         PL.eng = Params_Liveness::eng_Treb;
         break;
+    case Params_LtlCheck::eng_Rlive:
+        PL.k = Params_Liveness::L2S;
+        PL.eng = Params_Liveness::eng_Rlive;
+        break;
     case Params_LtlCheck::eng_NULL:
         return l_Undef;     // -- EXIT
     default: assert(false); }
