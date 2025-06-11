@@ -325,7 +325,7 @@ lbool liveness(NetlistRef N0, uint fair_prop_no, const Params_Liveness& P, Cex* 
 
     case Params_Liveness::eng_Rlive:
         /**/P_pdr2.prop_init = true;
-        ret = lbool_lift(pdr2(N, props, P_pdr2, &cex, Netlist_NULL));
+        ret = lbool_lift(rliveDemo(N, props, P_pdr2));
         break;
 
     case Params_Liveness::eng_Imc:

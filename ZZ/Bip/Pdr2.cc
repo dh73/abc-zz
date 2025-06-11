@@ -235,6 +235,10 @@ class Pdr2 {
     //    successors of state cube 's'. Used by rlive to build the nested DFS.
     Cube   approxPre(const Cube& s, const Cube& b, Cube* succ = NULL);
 
+    // -- Detect whether a state cube has any successor. If none exists, the
+    //    returned cube blocks the dead state in frame 0.
+    Cube   pruneDead(const Cube& s);
+
     void   extractCex(ProofObl pobl);
     uint   invariantSize();
     void   storeInvariant(NetlistRef N_invar);
@@ -247,9 +251,6 @@ public:
         N(N_), P(P_), cex(cex_), N_invar(N_invar_), n2z(1), activity(0), seed(DEFAULT_SEED) {}
 
     bool run();
-
-    // -- Public wrapper for approxPre used by rlive and external utilities.
-    Cube approxPreQuery(const Cube& s, const Cube& b, Cube* succ = NULL) { return approxPre(s, b, succ); }
 };
 
 
@@ -1125,6 +1126,34 @@ Cube Pdr2::approxPre(const Cube& s, const Cube& b, Cube* succ)
 }
 
 
+// Check if the state cube 's' has any successor by solving 's \land T'. If the
+// query is unsatisfiable, an unsat core subset of 's' is returned and stored in
+// frame 0 as a blocking cube.
+Cube Pdr2::pruneDead(const Cube& s)
+{
+    Vec<Lit> assumps;
+    for (uint i = 0; i < s.size(); i++)
+        assumps.push(clausify(0, s[i]));
+
+    lbool result = S[0].solve(assumps);
+    if (result == l_False){
+        Vec<Lit> confl;
+        S[0].getConflict(confl);
+        Vec<GLit> core_vec;
+        for (uint i = 0; i < s.size(); i++)
+            if (has(confl, clausify(0, s[i])))
+                core_vec.push(s[i]);
+
+        Cube core = (core_vec.size() != 0) ? Cube(core_vec) : Cube_NULL;
+        if (core)
+            addCube(TCube(core, 0));
+        return core;
+    }
+
+    return Cube_NULL;
+}
+
+
 // Check if 'c' is a cube consistent with the initial states. The cube 'c' may contain 'glit_NULL's
 // (which are ignored)
 template<class GVec>
@@ -1701,17 +1730,6 @@ bool pdr2( NetlistRef          N,
     if (!ret && cex)
         translateCex(ccex, N, *cex);
     return ret;
-}
-
-//-------------------------------------------------------------------------
-// Convenience wrapper creating a temporary Pdr2 engine to query approxPre.
-Cube approxPreRlive(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P,
-                    const Cube& s, const Cube& b, Cube* succ)
-{
-    CCex    dummy_cex;
-    Pdr2    engine(N, P, dummy_cex, Netlist_NULL);
-    engine.run();
-    return engine.approxPreQuery(s, b, succ);
 }
 
 
