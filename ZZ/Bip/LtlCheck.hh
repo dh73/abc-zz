@@ -28,7 +28,8 @@ struct Params_LtlCheck {
         eng_NULL,   // -- just transform
         eng_KLive,
         eng_L2sBmc,
-        eng_L2sPdr
+        eng_L2sPdr,
+        eng_Rlive
     };
 
     bool    inv;
