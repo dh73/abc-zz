@@ -228,6 +228,12 @@ lbool kLive(NetlistRef N, const Params_Liveness& P, Wire fair_mon, uint k, bool 
 }
 
 
+static bool rliveDemo(NetlistRef N, const Vec<Wire>& props, const Params_Pdr2& P)
+{
+    return rlive(N, props, P);
+}
+
+
 lbool liveness(NetlistRef N0, uint fair_prop_no, const Params_Liveness& P, Cex* out_cex, uint* out_loop)
 {
     Get_Pob(N0, fair_properties);
@@ -321,6 +327,11 @@ lbool liveness(NetlistRef N0, uint fair_prop_no, const Params_Liveness& P, Cex* 
     case Params_Liveness::eng_Pdr2:
         /**/P_pdr2.prop_init = true;
         ret = lbool_lift(pdr2(N, props, P_pdr2, &cex, Netlist_NULL));     // <<== need to add bug-free-depth and invariant to Pdr2
+        break;
+
+    case Params_Liveness::eng_Rlive:
+        /**/P_pdr2.prop_init = true;
+        ret = lbool_lift(rliveDemo(N, props, P_pdr2));
         break;
 
     case Params_Liveness::eng_Imc:
